@@ -16,7 +16,7 @@ defmodule DessousaineWeb.SamuserLive do
       socket
       |> assign(:page_title, "Expos Strasbourg")
       |> assign(:loading, false)
-      |> assign(:selected_museums, all_museum_keys())
+      |> assign(:selected_museums, MapSet.new())
       |> assign(:events, [])
       |> assign(:all_events, [])
       |> assign(:error, nil)
@@ -95,10 +95,13 @@ defmodule DessousaineWeb.SamuserLive do
       |> MapSet.to_list()
       |> Enum.map(&museum_name/1)
 
+    filter_active? = selected_names != []
+
     events =
       (assigns[:all_events] || [])
       |> Enum.filter(fn event ->
-        event["museum_name"] in selected_names
+        # Si aucun filtre actif, tout inclure; sinon filtrer
+        not filter_active? or event["museum_name"] in selected_names
       end)
 
     assign(socket, :events, events)

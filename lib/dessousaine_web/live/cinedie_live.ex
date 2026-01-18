@@ -19,7 +19,7 @@ defmodule DessousaineWeb.CinedieLive do
       socket
       |> assign(:page_title, "Programme")
       |> assign(:loading, %{vox: false, cosmos: false, star: false})
-      |> assign(:selected_cinemas, MapSet.new([:vox, :cosmos, :star]))
+      |> assign(:selected_cinemas, MapSet.new())
       |> load_schedules()
 
     {:ok, socket}
@@ -121,6 +121,7 @@ defmodule DessousaineWeb.CinedieLive do
 
   defp filter_sessions(%{assigns: assigns} = socket) do
     selected = assigns.selected_cinemas |> MapSet.to_list() |> Enum.map(&Atom.to_string/1)
+    filter_active? = selected != []
 
     # Get the current cinema week (starts on Wednesday)
     {_year, _week, wednesday} = Showtimes.current_cinema_week()
@@ -139,7 +140,10 @@ defmodule DessousaineWeb.CinedieLive do
         sessions =
           sessions_by_date
           |> Map.get(date, [])
-          |> Enum.filter(&(&1.cinema in selected))
+          |> Enum.filter(fn session ->
+            # Si aucun filtre actif, tout inclure; sinon filtrer
+            not filter_active? or session.cinema in selected
+          end)
 
         %{date: date, sessions: sessions}
       end)

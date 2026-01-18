@@ -17,7 +17,9 @@ defmodule DessousaineWeb.Router do
   scope "/", DessousaineWeb do
     pipe_through :browser
 
+    live "/", HomeLive, :index
     live "/cinedie", CinedieLive, :index
+    live "/samuser", SamuserLive, :index
   end
 
   # Other scopes may use custom stacks.

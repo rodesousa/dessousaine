@@ -106,7 +106,7 @@ defmodule Dessousaine.CineDie.Providers.Star do
       [_full, film_id, timestamp, version] ->
         case Integer.parse(timestamp) do
           {ts, ""} ->
-            {:ok, datetime} = DateTime.from_unix(ts)
+            datetime = DateTime.from_unix!(ts) |> DateTime.add(1, :hour)
 
             booking_url =
               if String.starts_with?(href, "http") do

@@ -22,6 +22,8 @@ defmodule Dessousaine.CineDie.Providers.StarTest do
       assert {:ok, _validated} = ShowtimeData.validate(data)
     end
 
+    # TODO(human): ajouter un test "duration and director fields" ici
+
     test "check fields" do
       html = html()
 

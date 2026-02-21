@@ -26,13 +26,22 @@ defmodule Dessousaine.CineDie.Providers.Star do
   def fetch_raw do
     case Req.get(@showtimes_url, receive_timeout: 30_000) do
       {:ok, %{status: 200, body: body}} ->
-        {:ok, body}
+        {:ok, convert_to_utf8(body)}
 
       {:ok, %{status: status}} ->
         {:error, {:http_error, status}}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp convert_to_utf8(body) when is_binary(body) do
+    body
+    |> :unicode.characters_to_binary(:latin1, :utf8)
+    |> case do
+      result when is_binary(result) -> result
+      _ -> body
     end
   end
 
@@ -45,6 +54,7 @@ defmodule Dessousaine.CineDie.Providers.Star do
       |> parse_films()
       |> Enum.reject(&is_nil/1)
       |> Enum.reject(fn film -> Enum.empty?(film["sessions"]) end)
+      |> Enum.reject(fn film -> is_nil(film["link"]) end)
 
     info = cinema_info()
 
@@ -165,13 +175,15 @@ defmodule Dessousaine.CineDie.Providers.Star do
         end
       end
 
+    section = find_film_section(doc, film_id) || doc
+
     %{
       title: clean_title(title),
       link: link,
-      director: extract_text_after(doc, film_id, "Réalisé par"),
-      duration: extract_duration(doc, film_id),
-      genre: extract_genre(doc, film_id),
-      poster_url: extract_poster(doc, film_id)
+      director: extract_text_after(section, "Réalisé par"),
+      duration: extract_duration(section),
+      genre: extract_genre(section),
+      poster_url: extract_poster(section, film_id)
     }
   end
 
@@ -181,17 +193,45 @@ defmodule Dessousaine.CineDie.Providers.Star do
     |> String.trim()
   end
 
-  defp extract_text_after(doc, film_id, prefix) do
-    # Chercher dans le contexte du film
-    doc
+  # Trouve le div contenant à la fois les booking links du film ET span.horaires-duree
+  # Prend le plus petit (le plus spécifique) parmi les candidats valides
+  defp find_film_section(doc, film_id) do
+    all_divs = Floki.find(doc, "div")
+
+    with_both =
+      Enum.filter(all_divs, fn div ->
+        Floki.find(div, "a[href*='/star/reserver/F#{film_id}/']") != [] and
+          Floki.find(div, "span.horaires-duree") != []
+      end)
+
+    case with_both do
+      [] ->
+        # Fallback : section booking seulement (sans durée)
+        all_divs
+        |> Enum.filter(fn div ->
+          Floki.find(div, "a[href*='/star/reserver/F#{film_id}/']") != []
+        end)
+        |> case do
+          [] -> nil
+          list -> Enum.min_by(list, fn div -> div |> Floki.text() |> String.length() end)
+        end
+
+      list ->
+        Enum.min_by(list, fn div -> div |> Floki.text() |> String.length() end)
+    end
+  end
+
+  defp extract_text_after(section, prefix) do
+    section
     |> Floki.text()
-    |> String.split(~r/Film #{film_id}|#{prefix}/i)
+    |> String.split(prefix)
     |> case do
       [_, after_prefix | _] ->
         after_prefix
         |> String.split("\n")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
         |> List.first()
-        |> String.trim()
         |> nilify()
 
       _ ->
@@ -199,18 +239,17 @@ defmodule Dessousaine.CineDie.Providers.Star do
     end
   end
 
-  defp extract_duration(doc, _film_id) do
-    # Chercher le pattern de durée dans le texte
-    text = Floki.text(doc)
-
-    case Regex.run(~r/(\d+h\d*)/, text) do
-      [duration | _] -> duration
-      _ -> nil
+  defp extract_duration(section) do
+    section
+    |> Floki.find("span.horaires-duree")
+    |> List.first()
+    |> case do
+      nil -> nil
+      el -> el |> Floki.text() |> String.trim() |> nilify()
     end
   end
 
-  defp extract_genre(_doc, _film_id) do
-    # Genre difficile à extraire sans structure claire
+  defp extract_genre(_section) do
     nil
   end
 
